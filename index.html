@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>STOCK MANAGER — Public Monitor</title><style>
+body{font:13px/1.45 -apple-system,Segoe UI,sans-serif;background:#111;color:#ddd;margin:16px}
+h1{color:#9fd;font-size:19px;margin:0 0 4px;letter-spacing:1px}
+.tagline{color:#ccc;font-size:13px;margin-bottom:12px}
+.tagline h3{color:#ccc;font-size:14px;font-weight:600;margin:2px 0}
+h2{color:#9fd;margin:18px 0 6px;font-size:15px}
+.tile{background:#1b1b1b;border:1px solid #333;border-radius:8px;padding:10px;margin:8px 0}
+.bad{color:#f66}.ok{color:#7d5}.warn{color:#fc5}
+table{border-collapse:collapse;width:100%}td,th{padding:3px 8px;border-bottom:1px solid #282828;text-align:right}
+th{color:#889}td:first-child,th:first-child{text-align:left}
+.name{text-align:left}
+#heart{font-size:16px;font-weight:700}
+.small{color:#777;font-size:11px}
+.xs{font-size:11px;color:#ddd}
+/* secondary text: same white as data cells, size-only (was grey #777 — 'name small'/'name xs' class chains made sector/company hard to read) */
+td.small,td.xs,th.small,th.xs{color:#ddd}
+.perf{margin-left:12px}
+/* banner link: keep the bright cyan ALSO after visiting (browser default a:visited purple is nearly invisible on dark) */
+a:visited{color:#9fd}
+.banner a{color:#9fd;font-size:15px;text-decoration:none}
+.banner a:hover{color:#fda;font-size:15px;text-decoration:underline}
+h3{margin:2px 0;font-weight:600}
+/* ---- phase wheel: market-cycle octagon, CRASH override in the center ---- */
+#wheel{position:relative;width:360px;height:320px;margin:4px auto}
+.wnode{position:absolute;width:100px;text-align:center;font-size:11px;
+  color:#667;padding:3px 0;border-radius:6px}
+.wnode.cur{font-weight:700;font-size:13px;border:2px solid}
+.wnode.prev{border:1px solid #a80;color:#fc5}
+.wcrash{position:absolute;left:50%;top:53%;transform:translate(-50%,-50%);
+  width:112px;text-align:center;font-size:12px;color:#667;
+  border:2px dashed #555;border-radius:12px;padding:6px 0}
+.wcrash.cur{color:#f66;border:3px solid #f66;font-weight:700;font-size:14px}
+</style></head><body>
+
+<h1>STOCK MANAGER v0.1</h1>
+<div class="tagline">Auto-Trader XETRA · public view · Not investment advice, no liability assumed. Past performance is not indicative of future results. Trading involves risk of loss.</div>
+<div> Recommended split: 40% Momentum Trader / 60% Bear Protector Pyr.</div>
+
+<div class="tile"><span id="heart">…</span>
+  <div id="hsub" class="small"></div></div>
+
+<div class="tile" style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">
+  <div>
+    <div>
+      <div class="small">MARKET CYCLE (clockwise) · current phase in color</div>
+      <div id="wheel">
+        <div class="wcrash" id="ph-CRASH">CRASH<br><span class="small">override</span></div>
+      </div>
+      <div class="small" style="text-align:center">
+        <span style="color:#7d5">● bull phase</span> ·
+        <span style="color:#f66">● bear phase</span> ·
+        <span style="color:#fc5">● transition (PEAK/PULLBACK/REBOUND/BOTTOMING)</span><br>
+        <span style="color:#fc5;border:1px solid #a80;border-radius:4px;padding:0 4px">boxed</span> = previous phase ·
+        <span style="color:#f66">CRASH center</span> = breadth override
+      </div>
+    </div>
+  </div>
+  <div style="flex:1;min-width:220px">
+    <div class="small">EVIDENCE</div>
+    <div id="evid"></div>
+  </div>
+</div>
+
+<h2>Sector performance</h2>
+<div class="tile"><table id="sectors"></table></div>
+
+<h2>Top 10 by score</h2>
+<div class="tile"><table id="top10"></table></div>
+
+<div id="traders"></div><br>
+<div class="tagline banner"><h3>
+ <a href="https://paypal.me/AnKarle" target="_blank" rel="noopener">&gt;&gt;&gt; Support this project: ☕ PayPal-ME &lt;&lt;&lt;</a>
+</h3></div><br>
+<script>
+const fmt=(x)=>x==null?"–":(typeof x==="number"
+  ?x.toLocaleString("de-DE",{maximumFractionDigits:2}):x);
+const esc=(s)=>(s==null?"":String(s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+  .replace(/"/g,"&quot;"));
+function phaseColor(p){return /MARKUP|SETTLE_UP|PEAK/.test(p||"")?"#7d5":
+  /MARKDOWN|SETTLE_DOWN|CRASH/.test(p||"")?"#f66":"#fc5";}
+function perfClass(p){return p==null?"":p>=0?"ok":"bad";}
+const dname=(b,n)=>(b&&b.display_name)||n;
+const pdate=(iso)=>!iso?"–":new Date(iso).toLocaleString("de-DE",
+  {timeZone:"Europe/Berlin",year:"2-digit",month:"2-digit",day:"2-digit",
+   hour:"2-digit",minute:"2-digit"});
+
+const WHEEL_ORDER=["PEAK","PULLBACK","MARKDOWN","SETTLE_DOWN","BOTTOMING","REBOUND","MARKUP","SETTLE_UP"];
+function buildWheel(){
+  const w=document.getElementById("wheel");
+  const cx=180, cy=160, R=126;
+  WHEEL_ORDER.forEach((ph,i)=>{
+    const a=-Math.PI/2 + i*(2*Math.PI/8);
+    const x=cx+R*Math.cos(a), y=cy+R*Math.sin(a);
+    const d=document.createElement("div");
+    d.className="wnode"; d.id="ph-"+ph; d.textContent=ph;
+    d.style.left=(x-50)+"px"; d.style.top=(y-14)+"px";
+    w.appendChild(d);
+  });
+}
+buildWheel();
+
+async function tick(){
+ try{
+  /* PUBLIC page reads public.json — the news-stripped snapshot */
+  const s=await(await fetch("public.json?"+Date.now())).json();
+  const age=Math.round((Date.now()/1000)-s.ts);
+  const H=document.getElementById("heart");
+  H.textContent=age<300?"● LIVE":"● STALE "+age+"s";
+  H.style.color=age<300?"#7d5":"#f66";
+  const m=s.market||{};
+
+  document.querySelectorAll(".wnode,.wcrash").forEach(el=>{
+    el.classList.remove("cur","prev"); el.style.color="";
+    el.style.borderColor=""; el.style.background="";
+  });
+  const cur=m.phase||"UNKNOWN";
+  const prev=m.previous_phase;
+  [...WHEEL_ORDER,"CRASH"].forEach(ph=>{
+    const el=document.getElementById("ph-"+ph);
+    if(!el) return;
+    if(ph===cur){
+      el.classList.add("cur");
+      el.style.color=phaseColor(ph);
+      el.style.borderColor=phaseColor(ph);
+      el.style.background="rgba(255,255,255,0.07)";
+    } else if(ph===prev){
+      el.classList.add("prev");
+      el.style.color="#fc5";
+      el.style.borderColor="#a80";
+    }
+  });
+
+  document.getElementById("evid").innerHTML=
+    `<b style="color:${phaseColor(cur)}">${cur}</b>`+
+    ` <span class="small">(${m.phase_source||"?"})</span><br>`+
+    `&nbsp;writer v${s.writer_version||"?"} · `+
+    `breadth <b>${fmt(m.breadth)}</b>`+
+    ` · DAX ${fmt(s.heartbeat.dax_price)}`+
+    ` (${fmt(s.heartbeat.dax_change_pct)}%)<br>`+
+    `ret21 ${fmt(m.dax_ret21)}% · target alloc ${fmt(m.target_allocation)}%`+
+    ` · vix-eq ${fmt(m.vix_equiv)}<br>`+
+    `configured: ${(s.configured_books||[]).join(", ")}`;
+
+  const sec=(s.sectors||[]).map(x=>{
+    const cls=(x.class||"").toUpperCase();
+    const c=cls==="STRONG"?"ok":cls==="WEAK"?"bad":"warn";
+    return `<tr><td>${x.rank}</td><td class="name">${x.sector}</td>`+
+     `<td>${fmt(x.score)}</td><td class="${c}">${x.class}</td>`+
+     `<td class="${(x.ret_7d||0)>=0?"ok":"bad"}">${fmt(x.ret_7d)}%</td>`+
+     `<td class="${(x.ret_30d||0)>=0?"ok":"bad"}">${fmt(x.ret_30d)}%</td>`+
+     `<td class="${(x.rs_7d||0)>=0?"ok":"bad"}">${fmt(x.rs_7d)}%</td>`+
+     `<td class="${(x.rs_30d||0)>=0?"ok":"bad"}">${fmt(x.rs_30d)}%</td>`+
+     `<td>${x.breadth}%</td><td>${x.trend}</td><td>${x.count}</td></tr>`;
+  }).join("");
+  document.getElementById("sectors").innerHTML=
+   `<tr><th>#</th><th class="name">sector</th><th>score</th><th>class</th>`+
+   `<th>7d</th><th>30d</th><th>RS7d</th><th>RS30d</th>`+
+   `<th>breadth</th><th>trend</th><th>n</th></tr>${sec}`;
+
+  document.getElementById("traders").innerHTML=(s.books||[]).map(b=>{
+    const dn=dname(b,b.name);
+    const dd=b.drawdown_pct||0, lim=b.certified_dd_limit;
+    const ddCls=dd<(lim||-1e9)*1.15?"bad":dd<(lim||-1e9)*0.85?"warn":"ok";
+    const ret=b.return_since_inception_pct;
+    const daxp=b.dax_perf_since_inception_pct;
+    const inc=b.inception_date||"?";
+    const lots=(b.lots||[]).map(l=>`<tr>`+
+      `<td>${l.ticker}</td><td class="name">${l.company||""}</td>`+
+      `<td class="name small">${l.sector||""}</td><td>#${l.lot}</td>`+
+      `<td class="xs">${pdate(l.purchase)}</td>`+
+      `<td>${l.shares}</td><td>${fmt(l.entry)}</td><td>${fmt(l.current)}</td>`+
+      `<td>${fmt(l.stop)}</td><td>${fmt(l.stop_dist_pct)}%</td>`+
+      `<td>${fmt(l.weight_pct)}%</td></tr>`).join("");
+    const tr=(b.recent_trades||[]).map(t=>`<tr>`+
+      `<td>${t.ts}</td><td>${t.action}</td><td>${t.ticker}</td>`+
+      `<td class="name small">${t.company||""}</td>`+
+      `<td>${fmt(t.shares)}</td><td>${fmt(t.price)}</td>`+
+      `<td class="${(t.pnl||0)>=0?"ok":"bad"}">${fmt(t.pnl)}</td></tr>`).join("");
+    return `<h2>🤖 ${dn}`+
+      (b.target_weight?` <span class="small">· target ${Math.round(b.target_weight*100)}% · ${b.name}</span>`:"")+
+      `</h2><div class="tile">`+
+      `<div class="name">since ${inc} · started from €${fmt(b.inception_capital)} `+
+      `current value €${fmt(b.value)} · cash €${fmt(b.cash)} · deployed ${fmt(b.deployment_pct)}%`+
+      ` · <span class="perf">since inception `+
+      `<span class="${perfClass(ret)}">${fmt(ret)}%</span></span>`+
+      ` · DAX since inception `+
+      `<span class="${perfClass(daxp)}">${fmt(daxp)}%</span></div>`+
+      `<table><tr><th>ticker</th><th class="name">company</th>`+
+      `<th class="name">sector</th><th>lot</th><th>since</th><th>sh</th>`+
+      `<th>entry</th><th>cur</th><th>stop</th><th>stop dist</th>`+
+      `<th>weight</th></tr>${lots}</table>`+
+      (tr?`<div class="small" style="margin-top:6px">recent trades:</div>`+
+        `<table><tr><th>ts</th><th></th><th>ticker</th><th class="name">company</th>`+
+        `<th>sh</th><th>price</th><th>pnl</th></tr>${tr}</table>`:"")+
+      `</div>`;
+  }).join("");
+
+  const t10=(s.top10||[]).map(c=>`<tr><td>${c.ticker}</td>`+
+   `<td class="name">${c.company||""}</td>`+
+   `<td class="name small">${c.sector||""}</td><td>${fmt(c.score)}</td>`+
+   `<td>${fmt(c.dist_sma200)}</td><td>${fmt(c.rsi)}</td><td>${fmt(c.p63)}</td>`+
+   `<td>${c.rank63||"–"}</td><td>${c.zone||"–"}</td></tr>`).join("");
+  document.getElementById("top10").innerHTML=
+   `<tr><th>ticker</th><th class="name">company</th><th class="name">sector</th>`+
+   `<th>score</th><th>dist200</th><th>rsi</th><th>63d%</th>`+
+   `<th>rank63</th><th>zone</th></tr>${t10}`;
+
+ }catch(e){
+  const H=document.getElementById("heart");
+  H.textContent="● NO DATA"; H.style.color="#f66";
+ }
+}
+tick();setInterval(tick,30000);
+</script></body></html>
