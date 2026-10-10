@@ -93,6 +93,7 @@ function phaseColor(p){return /MARKUP|SETTLE_UP|PEAK/.test(p||"")?"#7d5":
   /MARKDOWN|SETTLE_DOWN|CRASH/.test(p||"")?"#f66":"#fc5";}
 function perfClass(p){return p==null?"":p>=0?"ok":"bad";}
 const dname=(b,n)=>(b&&b.display_name)||n;
+const BOOK_SHORT={"MOM3":"MOM","BPM_Floor_Pyr":"BPP"};
 const pdate=(iso)=>!iso?"–":new Date(iso).toLocaleString("de-DE",
   {timeZone:"Europe/Berlin",year:"2-digit",month:"2-digit",day:"2-digit",
    hour:"2-digit",minute:"2-digit"});
@@ -198,7 +199,7 @@ function drawEquity(eq){
     ctx.beginPath();ctx.arc(x(Date.parse(last[0])),y(last[1]),2.5,0,7);
     ctx.fillStyle=s.color;ctx.fill();
     ctx.fillStyle=s.color;ctx.font="10px sans-serif";
-    ctx.fillText(`${(dname({display_name:null},s.name)||s.name)} €${Math.round(last[1]).toLocaleString("de-DE")}`,
+    ctx.fillText(`${BOOK_SHORT[s.name]||s.name} €${Math.round(last[1]).toLocaleString("de-DE")}`,
                  Math.min(x(Date.parse(last[0]))+6,W-86),y(last[1])+3);
   });
 }
@@ -238,12 +239,9 @@ async function tick(){
     `<b style="color:${phaseColor(cur)}">${cur}</b>`+
     ` <span class="small">(${m.phase_source||"?"})</span><br>`+
     `&nbsp;writer v${s.writer_version||"?"} · `+
-    `breadth <b>${fmt(m.breadth)}</b>`+
-    ` · DAX ${fmt(s.heartbeat.dax_price)}`+
+    `DAX ${fmt(s.heartbeat.dax_price)}`+
     ` (${fmt(s.heartbeat.dax_change_pct)}%)<br>`+
-    `ret21 ${fmt(m.dax_ret21)}% · target alloc ${fmt(m.target_allocation)}%`+
-    ` · vix-eq ${fmt(m.vix_equiv)}<br>`+
-    `configured: ${(s.configured_books||[]).join(", ")}`;
+    `configured: ${(s.configured_books||[]).map(n=>BOOK_SHORT[n]||n).join(", ")}`;
 
   const sec=(s.sectors||[]).map(x=>{
     const cls=(x.class||"").toUpperCase();
