@@ -60,12 +60,25 @@ h3{margin:2px 0;font-weight:600}
       </div>
     </div>
   </div>
-  <div style="flex:1;min-width:220px">
+  <div style="flex:1;min-width:260px">
     <div class="caption">EVIDENCE</div>
     <div id="evid"></div>
-    <div class="caption" style="margin-top:10px">PORTFOLIO VALUE since inception · books + DAX (indexed to €10k)</div>
-    <canvas id="daxchart" width="1080" height="320" style="width:100%;max-width:1080px;height:320px"></canvas>
+    <div class="caption" style="margin-top:10px">GLOSSARY</div>
+    <div class="xs">
+      <b style="color:#9fd">phase</b> — statistical DAX market regime (bull / bear / transition; CRASH = breadth override)<br>
+      <b style="color:#9fd">breadth</b> — share of the stock universe above its own 200-day average (0–1; ≤ 0.40 = crash territory)<br>
+      <b style="color:#9fd">ret21</b> — DAX return over the last 21 trading days (%)<br>
+      <b style="color:#9fd">target alloc</b> — equity share suggested for the current market phase (%, guidance only)<br>
+      <b style="color:#9fd">vix-eq</b> — annualized 21-day DAX volatility (VIX-style; higher = more nervous market)<br>
+      <b style="color:#9fd">DAX (source)</b> — index level and day change; the bracketed source is intraday or daily close<br>
+      <b style="color:#9fd">MOM / BPP</b> — the two strategy books (momentum / bear-protector); as Top-10 zones: which book's entry gate the candidate fits
+    </div>
   </div>
+</div>
+
+<h2>Portfolio value since inception <span class="small">· books + DAX (indexed to €10k)</span></h2>
+<div class="tile">
+  <canvas id="daxchart" width="1536" height="320" style="width:100%;max-width:1536px;height:auto;display:block"></canvas>
 </div>
 
 <h2>Sector performance</h2>
@@ -239,8 +252,11 @@ async function tick(){
     `<b style="color:${phaseColor(cur)}">${cur}</b>`+
     ` <span class="small">(${m.phase_source||"?"})</span><br>`+
     `&nbsp;writer v${s.writer_version||"?"} · `+
-    `DAX ${fmt(s.heartbeat.dax_price)}`+
+    `breadth <b>${fmt(m.breadth)}</b>`+
+    ` · DAX ${fmt(s.heartbeat.dax_price)}`+
     ` (${fmt(s.heartbeat.dax_change_pct)}%)<br>`+
+    `ret21 ${fmt(m.dax_ret21)}% · target alloc ${fmt(m.target_allocation)}%`+
+    ` · vix-eq ${fmt(m.vix_equiv)}<br>`+
     `configured: ${(s.configured_books||[]).map(n=>BOOK_SHORT[n]||n).join(", ")}`;
 
   const sec=(s.sectors||[]).map(x=>{
