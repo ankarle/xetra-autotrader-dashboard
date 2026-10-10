@@ -2,9 +2,10 @@
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
-<title>STOCK MANAGER — Public Monitor</title><style>
+<title>Auto-Trader Public Monitor</title><style>
 body{font:13px/1.45 -apple-system,Segoe UI,sans-serif;background:#111;color:#ddd;margin:16px}
 h1{color:#9fd;font-size:19px;margin:0 0 4px;letter-spacing:1px}
+.version{color:#777;font-size:11px;font-weight:400;vertical-align:super;margin-left:4px}
 .tagline{color:#ccc;font-size:13px;margin-bottom:12px}
 .tagline h3{color:#ccc;font-size:14px;font-weight:600;margin:2px 0}
 h2{color:#9fd;margin:18px 0 6px;font-size:15px}
@@ -14,7 +15,7 @@ table{border-collapse:collapse;width:100%}td,th{padding:3px 8px;border-bottom:1p
 th{color:#889}td:first-child,th:first-child{text-align:left}
 .name{text-align:left}
 #heart{font-size:16px;font-weight:700}
-.small{color:#777;font-size:11px}
+.small{color:#777;font-size:12px}
 .xs{font-size:11px;color:#ddd}
 /* secondary text: same white as data cells, size-only (was grey #777 — 'name small'/'name xs' class chains made sector/company hard to read) */
 td.small,td.xs,th.small,th.xs{color:#ddd}
@@ -32,7 +33,7 @@ h3{margin:2px 0;font-weight:600}
 .wnode.prev{border:1px solid #a80;color:#fc5}
 .wcrash{position:absolute;left:50%;top:53%;transform:translate(-50%,-50%);
   width:112px;text-align:center;font-size:12px;color:#667;
-  border:2px dashed #555;border-radius:12px;padding:6px 0}
+  border:2px dashed #777;border-radius:12px;padding:6px 0}
 .wcrash.cur{color:#f66;border:3px solid #f66;font-weight:700;font-size:14px}
 </style></head><body>
 
@@ -46,7 +47,7 @@ h3{margin:2px 0;font-weight:600}
 <div class="tile" style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">
   <div>
     <div>
-      <div class="small">MARKET CYCLE (clockwise) · current phase in color</div>
+      <div class="caption">MARKET CYCLE (clockwise) · current phase in color</div>
       <div id="wheel">
         <div class="wcrash" id="ph-CRASH">CRASH<br><span class="small">override</span></div>
       </div>
