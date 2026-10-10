@@ -278,10 +278,11 @@ async function tick(){
     const tr=(b.recent_trades||[]).map(t=>`<tr>`+
       `<td>${t.ts}</td><td>${t.action}</td><td>${t.ticker}</td>`+
       `<td class="name small">${t.company||""}</td>`+
+      `<td class="name small">${t.sector||""}</td>`+
       `<td>${fmt(t.shares)}</td><td>${fmt(t.price)}</td>`+
       `<td class="${(t.pnl||0)>=0?"ok":"bad"}">${fmt(t.pnl)}</td></tr>`).join("");
-    return `<h2>🤖 ${dn}`+
-      (b.target_weight?` <span class="small">· target ${Math.round(b.target_weight*100)}% · ${b.name}</span>`:"")+
+	return `<h2>🤖 ${dn}`+
+      (b.target_weight?` <span class="small">· target ${Math.round(b.target_weight*100)}%</span>`:"")+
       `</h2><div class="tile">`+
       `<div class="name">since ${inc} · started from €${fmt(b.inception_capital)} `+
       `current value €${fmt(b.value)} · cash €${fmt(b.cash)} · deployed ${fmt(b.deployment_pct)}%`+
@@ -295,7 +296,7 @@ async function tick(){
       `<th>weight</th></tr>${lots}</table>`+
       (tr?`<div class="small" style="margin-top:6px">recent trades:</div>`+
         `<table><tr><th>ts</th><th></th><th>ticker</th><th class="name">company</th>`+
-        `<th>sh</th><th>price</th><th>pnl</th></tr>${tr}</table>`:"")+
+        `<th class="name">sector</th><th>sh</th><th>price</th><th>pnl</th></tr>${tr}</table>`:"")+
       `</div>`;
   }).join("");
 
