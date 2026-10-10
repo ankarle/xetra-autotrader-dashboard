@@ -315,14 +315,14 @@ async function tick(){
  }
 }
 tick();setInterval(tick,30000);
-/* ---- visitor counter (excludes the owner via localStorage flag) ---- */
+/* ---- visitor counter (Abacus; owner excluded via localStorage flag) ---- */
 (async()=>{
   const el=document.getElementById("visits");
   if(!el) return;
   const isOwner=!!localStorage.getItem("owner");
-  const verb=isOwner?"get":"hit";        // hit increments, get only reads
   try{
-    const r=await fetch("https://api.countapi.xyz/"+verb+"/ankarle-xetra/visits");
+    const verb=isOwner?"get":"hit";        // hit increments, get only reads
+    const r=await fetch("https://abacus.jasoncameron.dev/"+verb+"/ankarle-xetra/visits");
     const j=await r.json();
     el.textContent=j.value;
   }catch(e){el.textContent="–";}
