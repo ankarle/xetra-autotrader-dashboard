@@ -84,20 +84,6 @@ h3{margin:2px 0;font-weight:600}
   <span class="caption"><span id="visits">…</span> visits</span>
 </div>
 <script>
-(function(){
-  const el=document.getElementById("visits");
-  const ns="ankarle-xetra/visits";
-  // 'hit' increments + returns; 'get' only reads. Browsers flagged as
-  // 'owner' (set once via F12 console, see docs) only read.
-  const url="https://api.countapi.xyz/"
-    +(localStorage.getItem("owner")?"get":"hit")+"/"+ns;
-  fetch(url).then(r=>r.json())
-            .then(j=>{el.textContent=j.value;})
-            .catch(()=>{el.textContent="–";});
-})();
-</script>
-
-<script>
 const fmt=(x)=>x==null?"–":(typeof x==="number"
   ?x.toLocaleString("de-DE",{maximumFractionDigits:2}):x);
 const esc=(s)=>(s==null?"":String(s)
@@ -329,4 +315,16 @@ async function tick(){
  }
 }
 tick();setInterval(tick,30000);
+/* ---- visitor counter (excludes the owner via localStorage flag) ---- */
+(async()=>{
+  const el=document.getElementById("visits");
+  if(!el) return;
+  const isOwner=!!localStorage.getItem("owner");
+  const verb=isOwner?"get":"hit";        // hit increments, get only reads
+  try{
+    const r=await fetch("https://api.countapi.xyz/"+verb+"/ankarle-xetra/visits");
+    const j=await r.json();
+    el.textContent=j.value;
+  }catch(e){el.textContent="–";}
+})();
 </script></body></html>
