@@ -44,7 +44,7 @@ h3{margin:2px 0;font-weight:600}
 <div class="tile"><span id="heart">…</span>
   <div id="hsub" class="small"></div></div>
 
-<div class="tile" style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">
+<div class="tile" style="display:flex;flex-wrap:wrap;gap:100px;align-items:flex-start">
   <div>
     <div>
       <div class="caption">MARKET CYCLE (clockwise) · current phase in color</div>
@@ -71,7 +71,21 @@ h3{margin:2px 0;font-weight:600}
       <b style="color:#9fd">target alloc</b> — equity share suggested for the current market phase (%, guidance only)<br>
       <b style="color:#9fd">vix-eq</b> — annualized 21-day DAX volatility (VIX-style; higher = more nervous market)<br>
       <b style="color:#9fd">DAX (source)</b> — index level and day change; the bracketed source is intraday or daily close<br>
-      <b style="color:#9fd">MOM / BPP</b> — the two strategy books (momentum / bear-protector); as Top-10 zones: which book's entry gate the candidate fits
+      <b style="color:#9fd">MOM / BPP</b> — the two strategy books (momentum / bear-protector); as Top-10 zones: which book's entry gate the candidate fits<br>
+      <b style="color:#9fd">n</b> — number of stocks in the sector (sector table)<br>
+      <b style="color:#9fd">RS7d / RS30d</b> — sector's relative strength vs the DAX: sector return minus DAX return, 7d and 30d windows (%)<br>
+      <b style="color:#9fd">score</b> — weighted momentum score, 0–100 (sectors: sector average; Top-10: composite technical score of the stock)<br>
+      <b style="color:#9fd">dist200</b> — distance of the price from its 200-day average (%)<br>
+      <b style="color:#9fd">rsi</b> — Relative Strength Index (14d), 0–100; >70 overbought, <30 oversold<br>
+      <b style="color:#9fd">63d% / rank63</b> — 63-trading-day return and its rank among the universe<br>
+      <b style="color:#9fd">sh</b> — shares held (lot size)<br>
+      <b style="color:#9fd">entry / cur / stop</b> — purchase price, current price, stop-loss trigger (€)<br>
+      <b style="color:#9fd">stop dist</b> — distance from current price down to the stop-loss (%)<br>
+      <b style="color:#9fd">weight</b> — the lot's share of the book's total value (%)<br>
+      <b style="color:#9fd">ts</b> — timestamp of the trade (CET)<br>
+      <b style="color:#9fd">pnl</b> — realized profit/loss of the trade (€, net of commission)<br>
+      <b style="color:#9fd">lot</b> — purchase block number within the position (pyramiding = multiple lots)<br>
+      <b style="color:#9fd">writer v</b> — version of the dashboard data writer (traceability)
     </div>
   </div>
 </div>
@@ -287,15 +301,15 @@ async function tick(){
       `<td>${l.ticker}</td><td class="name">${l.company||""}</td>`+
       `<td class="name small">${l.sector||""}</td><td>#${l.lot}</td>`+
       `<td class="xs">${pdate(l.purchase)}</td>`+
-      `<td>${l.shares}</td><td>${fmt(l.entry)}</td><td>${fmt(l.current)}</td>`+
-      `<td>${fmt(l.stop)}</td><td>${fmt(l.stop_dist_pct)}%</td>`+
+      `<td>${l.shares}</td><td>€${fmt(l.entry)}</td><td>€${fmt(l.current)}</td>`+
+      `<td>€${fmt(l.stop)}</td><td>${fmt(l.stop_dist_pct)}%</td>`+
       `<td>${fmt(l.weight_pct)}%</td></tr>`).join("");
     const tr=(b.recent_trades||[]).map(t=>`<tr>`+
       `<td>${t.ts}</td><td>${t.action}</td><td>${t.ticker}</td>`+
       `<td class="name small">${t.company||""}</td>`+
       `<td class="name small">${t.sector||""}</td>`+
-      `<td>${fmt(t.shares)}</td><td>${fmt(t.price)}</td>`+
-      `<td class="${(t.pnl||0)>=0?"ok":"bad"}">${fmt(t.pnl)}</td></tr>`).join("");
+      `<td>${fmt(t.shares)}</td><td>€${fmt(t.price)}</td>`+
+      `<td class="${(t.pnl||0)>=0?"ok":"bad"}">${(t.pnl>=0?"+":"−")}€${fmt(Math.abs(t.pnl))}</td></tr>`).join("");
 	return `<h2>🤖 ${dn}`+
       (b.target_weight?` <span class="small">· target ${Math.round(b.target_weight*100)}%</span>`:"")+
       `</h2><div class="tile">`+
