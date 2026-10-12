@@ -73,37 +73,36 @@ h3{margin:2px 0;font-weight:600}
       <b style="color:#9fd">vix-eq</b> — annualized 21-day DAX volatility (VIX-style; higher = more nervous market)<br>
       <b style="color:#9fd">DAX (source)</b> — index level and day change; the bracketed source is intraday or daily close<br>
       <b style="color:#9fd">MOM / BPP</b> — the two strategy books (momentum / bear-protector); as Top-10 zones: which book's entry gate the candidate fits<br>
-      <b style="color:#9fd">n</b> — number of stocks in the sector (sector table)<br>
+      <b style="color:#9fd">zone</b> — which book's entry gate the candidate currently fits<br>
+      <b style="color:#9fd">num</b> — number of stocks in the sector (sector table)<br>
       <b style="color:#9fd">RS7d / RS30d</b> — sector's relative strength vs the DAX: sector return minus DAX return, 7d and 30d windows (%)<br>
       <b style="color:#9fd">score</b> — weighted momentum score, 0–100 (sectors: sector average; Top-10: composite technical score of the stock)<br>
       <b style="color:#9fd">dist200</b> — distance of the price from its 200-day average (%)<br>
       <b style="color:#9fd">rsi</b> — Relative Strength Index (14d), 0–100; >70 overbought, <30 oversold<br>
       <b style="color:#9fd">63d% / rank63</b> — 63-trading-day return and its rank among the universe<br>
-      <b style="color:#9fd">sh</b> — shares held (lot size)<br>
       <b style="color:#9fd">entry / cur / stop</b> — purchase price, current price, stop-loss trigger (€)<br>
       <b style="color:#9fd">stop dist</b> — distance from current price down to the stop-loss (%)<br>
       <b style="color:#9fd">weight</b> — the lot's share of the book's total value (%)<br>
-      <b style="color:#9fd">ts</b> — timestamp of the trade (CET)<br>
       <b style="color:#9fd">pnl</b> — realized profit/loss of the trade (€, net of commission)<br>
       <b style="color:#9fd">lot</b> — purchase block number within the position (pyramiding = multiple lots)<br>
-      <b style="color:#9fd">writer v</b> — version of the dashboard data writer (traceability)
     </div>
   </div>
-</div>
-
-<h2>Portfolio value since inception <span class="small">· books + DAX (indexed to €10k)</span></h2>
-<div class="tile">
-  <canvas id="daxchart" width="1536" height="320" style="width:100%;max-width:1536px;height:auto;display:block"></canvas>
-  <div class="xs" style="margin-top:2px">background: <span style="color:#7d5">▮ bull phases</span> · <span style="color:#fc5">▮ transitions</span> · <span style="color:#f66">▮ bear / crash</span> · dots: <span style="color:#7d5">● buy</span> / <span style="color:#f66">● sell</span> (circle colour = book)</div>
 </div>
 
 <h2>Sector performance</h2>
 <div class="tile"><table id="sectors"></table></div>
 
-<h2>Top 10 by score</h2>
+<h2>Top 20 by score</h2>
 <div class="tile"><table id="top10"></table></div>
 
+<h2>Portfolio value since inception <span class="small">· books + DAX (indexed to €10k)</span></h2>
+<div class="tile">
+  <canvas id="daxchart" width="1920" height="512" style="width:100%;max-width:1920px;height:auto;display:block"></canvas>
+  <div class="xs" style="margin-top:2px">background: <span style="color:#7d5">▮ bull phases</span> · <span style="color:#fc5">▮ transitions</span> · <span style="color:#f66">▮ bear / crash</span> · dots: <span style="color:#7d5">● buy</span> / <span style="color:#f66">● sell</span> (circle colour = book)</div>
+</div>
+
 <div id="traders"></div><br>
+
 <div class="tagline banner"><h3>
  <a href="https://github.com/sponsors/ankarle" target="_blank" rel="noopener">&gt;&gt;&gt; Support with GitHub </a>
  <a href="https://paypal.me/AnKarle" target="_blank" rel="noopener">or Paypal ☕ &lt;&lt;&lt;</a><br><br>
@@ -360,7 +359,7 @@ async function tick(){
   document.getElementById("sectors").innerHTML=
    `<tr><th>#</th><th class="name">sector</th><th>score</th><th>class</th>`+
    `<th>7d</th><th>30d</th><th>RS7d</th><th>RS30d</th>`+
-   `<th>breadth</th><th>trend</th><th>n</th></tr>${sec}`;
+   `<th>breadth</th><th>trend</th><th>num</th></tr>${sec}`;
 
   document.getElementById("traders").innerHTML=(s.books||[]).map(b=>{
     const dn=dname(b,b.name);
@@ -382,7 +381,7 @@ async function tick(){
       `<td class="name small">${t.sector||""}</td>`+
       `<td>${fmt(t.shares)}</td><td>€${fmt(t.price)}</td>`+
       `<td class="${(t.pnl||0)>=0?"ok":"bad"}">${(t.pnl>=0?"+":"−")}€${fmt(Math.abs(t.pnl))}</td></tr>`).join("");
-	return `<h2>🤖 ${dn}`+
+	return `<h2>🤖 ${dn} PORTFOLIO`+
       (b.target_weight?` <span class="small">· target ${Math.round(b.target_weight*100)}%</span>`:"")+
       `</h2><div class="tile">`+
       `<div class="name">since ${inc} · started from €${fmt(b.inception_capital)} `+
@@ -392,12 +391,12 @@ async function tick(){
       ` · DAX since inception `+
       `<span class="${perfClass(daxp)}">${fmt(daxp)}%</span></div>`+
       `<table><tr><th>ticker</th><th class="name">company</th>`+
-      `<th class="name">sector</th><th>lot</th><th>since</th><th>sh</th>`+
+      `<th class="name">sector</th><th>lot</th><th>since</th><th>shares</th>`+
       `<th>entry</th><th>cur</th><th>stop</th><th>stop dist</th>`+
       `<th>weight</th></tr>${lots}</table>`+
       (tr?`<div class="small" style="margin-top:6px">recent trades:</div>`+
-        `<table><tr><th>ts</th><th></th><th>ticker</th><th class="name">company</th>`+
-        `<th class="name">sector</th><th>sh</th><th>price</th><th>pnl</th></tr>${tr}</table>`:"")+
+        `<table><tr><th>timestamp (CET)</th><th>trade</th><th>ticker</th><th class="name">company</th>`+
+        `<th class="name">sector</th><th>shares</th><th>price</th><th>pnl</th></tr>${tr}</table>`:"")+
       `</div>`;
   }).join("");
 
