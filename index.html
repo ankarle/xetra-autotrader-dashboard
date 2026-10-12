@@ -39,6 +39,7 @@ h3{margin:2px 0;font-weight:600}
 
 <h1>XETRA AUTOTRADER <span class="version">v1.0</span></h1>
 <div class="tagline">Auto-Trader XETRA · public view · Not investment advice, no liability assumed. Past performance is not indicative of future results. Trading involves risk of loss.</div>
+<div class="tagline">All trades are <b>virtual trades</b> — no real orders are placed. They are executed on real intraday XETRA market data, 15 minutes delayed, and include realistic commissions, slippage and interest — so results are equivalent to what real trades would have achieved.</div>
 <div> Recommended split: 40% Momentum Trader / 60% Bear Protector Pyr.</div>
 
 <div class="tile"><span id="heart">…</span>
@@ -93,7 +94,7 @@ h3{margin:2px 0;font-weight:600}
 <h2>Portfolio value since inception <span class="small">· books + DAX (indexed to €10k)</span></h2>
 <div class="tile">
   <canvas id="daxchart" width="1536" height="320" style="width:100%;max-width:1536px;height:auto;display:block"></canvas>
-  <div class="xs" style="margin-top:2px">background: <span style="color:#7d5">▮ bull phases</span> · <span style="color:#fc5">▮ transitions</span> · <span style="color:#f66">▮ bear / crash</span> (phases recorded since go-live; historical shading fills in over time)</div>
+  <div class="xs" style="margin-top:2px">background: <span style="color:#7d5">▮ bull phases</span> · <span style="color:#fc5">▮ transitions</span> · <span style="color:#f66">▮ bear / crash</span> · dots: <span style="color:#7d5">● buy</span> / <span style="color:#f66">● sell</span> (circle colour = book)</div>
 </div>
 
 <h2>Sector performance</h2>
@@ -225,6 +226,32 @@ function drawEquity(eq){
       ctx.fillStyle=c;
       ctx.fillRect(x0,2,Math.max(1,x1-x0),H-24);
     }
+  /* ---- trade markers: circle in the book's colour; fill green=buy, red=sell ---- */
+  const trades=eq.trades||[];
+  series.forEach(s=>{
+    const tbn=s.name;   // series names == book names
+    const mine=trades.filter(t=>t.book===tbn||BOOK_SHORT[t.book]===tbn||
+                                 (BOOK_SHORT[tbn]||tbn)===t.book);
+    mine.forEach(t=>{
+      const tt=Date.parse(t.ts);
+      if(isNaN(tt)||tt<t0||tt>t1) return;
+      // find the series value at (nearest) that time
+      const pts=s.pts.filter(p=>!isNaN(Date.parse(p[0])));
+      if(!pts.length) return;
+      let best=pts[0];
+      pts.forEach(p=>{const pt=Date.parse(p[0]);
+        if(pt<=tt+86400000&&pt>=Date.parse(best[0])){}});
+      // simpler: nearest point in time
+      let bd=Infinity;
+      pts.forEach(p=>{const d=Math.abs(Date.parse(p[0])-tt);
+        if(d<bd){bd=d;best=p;}});
+      const px=x(Date.parse(best[0])),py=y(best[1]);
+      ctx.beginPath();ctx.arc(px,py,4,0,7);
+      ctx.strokeStyle=s.color;ctx.lineWidth=1.6;ctx.stroke();
+      ctx.fillStyle=t.action==="BUY"?"#7d5":"#f66";
+      ctx.fill();
+    });
+  });
   }
 
   /* ---- y grid + € labels ---- */
