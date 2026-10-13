@@ -379,6 +379,7 @@ async function tick(){
       `<td>${t.ts}</td><td>${t.action}</td><td>${t.ticker}</td>`+
       `<td class="name small">${t.company||""}</td>`+
       `<td class="name small">${t.sector||""}</td>`+
+      `<td>${t.score==null?"–":t.score.toFixed(1)}</td>`+
       `<td>${fmt(t.shares)}</td><td>€${fmt(t.price)}</td>`+
       `<td class="${(t.pnl||0)>=0?"ok":"bad"}">${(t.pnl>=0?"+":"−")}€${fmt(Math.abs(t.pnl))}</td></tr>`).join("");
 	return `<h2>🤖 ${dn} PORTFOLIO`+
@@ -396,7 +397,7 @@ async function tick(){
       `<th>weight</th></tr>${lots}</table>`+
       (tr?`<div class="small" style="margin-top:6px">recent trades:</div>`+
         `<table><tr><th>timestamp (CET)</th><th>trade</th><th>ticker</th><th class="name">company</th>`+
-        `<th class="name">sector</th><th>shares</th><th>price</th><th>pnl</th></tr>${tr}</table>`:"")+
+        `<th class="name">sector</th><th>score</th><th>sh</th><th>price</th><th>pnl</th></tr>${tr}</table>`:"")+
       `</div>`;
   }).join("");
 
