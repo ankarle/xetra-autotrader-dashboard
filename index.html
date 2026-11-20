@@ -98,7 +98,7 @@ h3{margin:2px 0;font-weight:600}
 <h2>Portfolio value since inception <span class="small">· books + DAX (indexed to €10k)</span></h2>
 <div class="tile">
   <canvas id="daxchart" width="1920" height="512" style="width:100%;max-width:1920px;height:auto;display:block"></canvas>
-  <div class="xs" style="margin-top:2px">background: <span style="color:#7d5">▮ bull phases</span> · <span style="color:#fc5">▮ transitions</span> · <span style="color:#f66">▮ bear / crash</span> · dots: <span style="color:#7d5">● buy</span> / <span style="color:#f66">● sell</span> (circle colour = book)</div>
+  <div class="xs" style="margin-top:2px">background: <span style="color:#7d5">▮ bull phases</span> · <span style="color:#fc5">▮ transitions</span> · <span style="color:#f66">▮ bear / crash</span> · dots: <span style="color:#7d5">● buy</span> / <span style="color:#f66">● sell</span> (circle colour = book) &middot; <b>zoom:</b> wheel = time &middot; Shift+wheel = &euro; &middot; Ctrl+wheel = both &middot; drag = pan &middot; double-click = reset</div>
 </div>
 
 <div id="traders"></div><br>
@@ -171,7 +171,18 @@ async function loadDaxSeries(){
   _histCache.rows=rows;
   return rows;
 }
-/* ---- Inception equity chart: books + DAX, from equity_history.json ---- */
+/* ---- Inception equity chart: books + DAX, from equity_history.json ----
+   PAN & ZOOM (vanilla canvas, no library). The view window lives in data
+   coordinates, survives the 30 s refresh redraws, and auto-follows new
+   data while its right edge sits at the newest point:
+     wheel            zoom the time axis around the cursor
+     Shift + wheel    zoom the EUR axis around the cursor
+     Ctrl/Cmd + wheel zoom both axes (touch: pinch gesture)
+     drag             pan both axes
+     double-click     reset to the full-history view
+   Until you zoom/pan Y manually, Y auto-fits the VISIBLE slice. A
+   crosshair readout shows the date and every series' value at the
+   cursor's nearest day. */
 const _eqCache={ts:0,data:null};
 async function loadEquity(){
   if(_eqCache.data && Date.now()-_eqCache.ts<300000) return _eqCache.data;
@@ -180,7 +191,14 @@ async function loadEquity(){
     _eqCache.ts=Date.now();_eqCache.data=j;return j;
   }catch(e){return null;}
 }
+
+const _eqView={t0:null,t1:null,rlo:null,rhi:null,yAuto:true,follow:true};
+const _eqExt={T0:0,T1:0,lo:0,hi:1};   // full-data extents (zoom clamps)
+let _eqLast=null,_eqHover=null,_eqRaf=0;
+window._eqView=_eqView;               // exposed for debugging / tests
+
 function drawEquity(eq){
+  _eqLast=eq;
   const cv=document.getElementById("daxchart");
   if(!cv) return;
   const ctx=cv.getContext("2d");
@@ -196,112 +214,306 @@ function drawEquity(eq){
   series.push({name:"DAX (indexed)",pts:dax.map(p=>[p[0],p[1]]),color:"#889"});
   const cols=["#9fd","#fda"];
   series.forEach((s,i)=>{if(s.color===null)s.color=cols[i%cols.length];});
+  // keep only points with a parseable timestamp (every consumer below
+  // needs Date.parse — filter once instead of three times)
+  series.forEach(s=>{s.pts=s.pts.filter(p=>!isNaN(Date.parse(p[0])));});
 
   let lo=Infinity,hi=-Infinity;
   series.forEach(s=>s.pts.forEach(p=>{if(p[1]<lo)lo=p[1];if(p[1]>hi)hi=p[1];}));
-  if(!isFinite(lo)){ctx.fillStyle="#777";ctx.fillText("no data yet",10,H/2);return;}
-  const pad=(hi-lo)*0.1||1;
-  const y=v=>H-24-((v-(lo-pad))/((hi+pad)-(lo-pad)))*(H-40);
-  const xs=series.flatMap(s=>s.pts.map(p=>Date.parse(p[0]))).filter(t=>!isNaN(t));
-  const t0=Math.min(...xs),t1=Math.max(...xs);
-  const x=t=>8+((t-t0)/Math.max(1,(t1-t0)))*(W-110);
+  const xs=series.flatMap(s=>s.pts.map(p=>Date.parse(p[0])));
+  const T0=Math.min(...xs),T1=Math.max(...xs);
+  if(!isFinite(lo)||!isFinite(T0)||T1<=T0){
+    ctx.fillStyle="#777";ctx.fillText("no data yet",10,H/2);return;}
+  _eqExt.T0=T0;_eqExt.T1=T1;_eqExt.lo=lo;_eqExt.hi=hi;
 
-  /* ---- phase background bands (from eq.phases; only recent days at first) ---- */
+  /* ---- view window (pan/zoom state; defaults to the full history) ---- */
+  const V=_eqView;
+  if(V.t0==null){V.t0=T0;V.t1=T1;V.yAuto=true;V.follow=true;}
+  else if(V.follow&&T1>V.t1){          // right edge at the newest point:
+    const d=T1-V.t1;                   // slide the window with new data
+    V.t1=T1;V.t0=Math.max(T0,V.t0+d);
+  }
+  if(V.yAuto){                         // Y fits the VISIBLE slice
+    let vlo=Infinity,vhi=-Infinity;
+    series.forEach(s=>s.pts.forEach(p=>{const t=Date.parse(p[0]);
+      if(t>=V.t0&&t<=V.t1){if(p[1]<vlo)vlo=p[1];if(p[1]>vhi)vhi=p[1];}}));
+    if(!isFinite(vlo)){vlo=lo;vhi=hi;}
+    const p=(vhi-vlo)*0.1||1;
+    V.rlo=vlo-p;V.rhi=vhi+p;
+  }
+  const t0=V.t0,t1=V.t1,rlo=V.rlo,rhi=V.rhi;
+  const y=v=>H-24-((v-rlo)/(rhi-rlo))*(H-40);
+  const x=t=>8+((t-t0)/Math.max(1,t1-t0))*(W-110);
+  const xInv=px=>t0+((px-8)/(W-110))*Math.max(1,t1-t0);
+
+  /* ---- phase background bands (from eq.phases) ---- */
   const PHCOL={PEAK:"rgba(125,221,85,0.10)",MARKUP:"rgba(125,221,85,0.16)",
     SETTLE_UP:"rgba(125,221,85,0.08)",PULLBACK:"rgba(252,165,5,0.10)",
     MARKDOWN:"rgba(255,102,102,0.12)",SETTLE_DOWN:"rgba(255,102,102,0.08)",
     BOTTOMING:"rgba(252,165,5,0.10)",REBOUND:"rgba(252,165,5,0.14)",
     CRASH:"rgba(255,102,102,0.22)"};
   const phases=(eq.phases||[]).filter(p=>!isNaN(Date.parse(p[0])));
-  if(phases.length){
-    // extend each phase from its own start to the next phase's start
-    // (or the chart's right edge for the last one)
-    for(let i=0;i<phases.length;i++){
-      const c=PHCOL[phases[i][1]];
-      if(!c) continue;
-      const x0=Math.max(0,x(Date.parse(phases[i][0])));
-      const x1=(i+1<phases.length)?x(Date.parse(phases[i+1][0])):W-102;
-      if(x1<=x0) continue;
-      ctx.fillStyle=c;
-      ctx.fillRect(x0,2,Math.max(1,x1-x0),H-24);
-    }
-  /* ---- trade markers: circle in the book's colour; fill green=buy, red=sell ---- */
+  for(let i=0;i<phases.length;i++){
+    const c=PHCOL[phases[i][1]];
+    if(!c) continue;
+    const x0=Math.max(0,x(Date.parse(phases[i][0])));
+    const x1=(i+1<phases.length)?x(Date.parse(phases[i+1][0])):W-102;
+    if(x1<=x0) continue;
+    ctx.fillStyle=c;
+    ctx.fillRect(x0,2,Math.max(1,x1-x0),H-24);
+  }
+
+  /* ---- trade markers: circle in the book's colour; fill green=buy, red=sell
+     (FIX: this block used to be nested inside the phases-if — markers
+     never rendered while eq.phases was still empty) ---- */
   const trades=eq.trades||[];
   series.forEach(s=>{
+    if(!s.pts.length) return;
     const tbn=s.name;   // series names == book names
-    const mine=trades.filter(t=>t.book===tbn||BOOK_SHORT[t.book]===tbn||
-                                 (BOOK_SHORT[tbn]||tbn)===t.book);
-    mine.forEach(t=>{
+    trades.filter(t=>t.book===tbn||BOOK_SHORT[t.book]===tbn||
+                     (BOOK_SHORT[tbn]||tbn)===t.book).forEach(t=>{
       const tt=Date.parse(t.ts);
       if(isNaN(tt)||tt<t0||tt>t1) return;
-      // find the series value at (nearest) that time
-      const pts=s.pts.filter(p=>!isNaN(Date.parse(p[0])));
-      if(!pts.length) return;
-      let best=pts[0];
-      pts.forEach(p=>{const pt=Date.parse(p[0]);
-        if(pt<=tt+86400000&&pt>=Date.parse(best[0])){}});
-      // simpler: nearest point in time
-      let bd=Infinity;
-      pts.forEach(p=>{const d=Math.abs(Date.parse(p[0])-tt);
+      let best=s.pts[0],bd=Infinity;      // nearest point in time
+      s.pts.forEach(p=>{const d=Math.abs(Date.parse(p[0])-tt);
         if(d<bd){bd=d;best=p;}});
-      const px=x(Date.parse(best[0])),py=y(best[1]);
-      ctx.beginPath();ctx.arc(px,py,4,0,7);
+      ctx.beginPath();ctx.arc(x(Date.parse(best[0])),y(best[1]),4,0,7);
       ctx.strokeStyle=s.color;ctx.lineWidth=1.6;ctx.stroke();
       ctx.fillStyle=t.action==="BUY"?"#7d5":"#f66";
       ctx.fill();
     });
   });
-  }
 
-  /* ---- y grid + € labels ---- */
+  /* ---- y grid + EUR labels (5 lines — enough reference once zoomed) ---- */
   ctx.strokeStyle="#282828";ctx.fillStyle="#888";ctx.font="10px sans-serif";
-  [lo,(lo+hi)/2,hi].forEach(v=>{const yy=y(v);
+  for(let i=0;i<=4;i++){
+    const v=rlo+(i/4)*(rhi-rlo),yy=y(v);
     ctx.beginPath();ctx.moveTo(0,yy);ctx.lineTo(W-102,yy);ctx.stroke();
-    ctx.fillText("€"+Math.round(v).toLocaleString("de-DE"),W-96,yy+3);});
-
-  /* ---- x axis: month ticks + year labels ---- */
-  const MONTHS=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
-  const d0=new Date(t0),d1=new Date(t1);
-  // iterate first-of-month from the chart start to its end
-  let mdt=new Date(d0.getFullYear(),d0.getMonth()+1,1);
-  let lastYearLabel=null;
-  while(mdt.getTime()<=t1){
-    const mx=x(mdt.getTime());
-    // tick line (short, at the bottom)
-    ctx.strokeStyle="#333";
-    ctx.beginPath();ctx.moveTo(mx,H-24);ctx.lineTo(mx,H-19);ctx.stroke();
-    // month label every ~2nd month if they'd overlap (chart width dependent)
-    const pxPerMonth=(W-110)/Math.max(1,((t1-t0)/(30.44*86400000)));
-    if(pxPerMonth>34 || mdt.getMonth()%2===0){
-      ctx.fillStyle="#888";
-      ctx.fillText(MONTHS[mdt.getMonth()],mx-9,H-8);
-    }
-    // year label at each January (or the first month if the window has none)
-    if(mdt.getMonth()===0||lastYearLabel===null){
-      ctx.fillStyle="#aaa";ctx.font="bold 11px sans-serif";
-      ctx.fillText(String(mdt.getFullYear()),mx-14,H-8);
-      ctx.font="10px sans-serif";
-      lastYearLabel=mdt.getFullYear();
-    }
-    mdt=new Date(mdt.getFullYear(),mdt.getMonth()+1,1);
+    ctx.fillText("\u20ac"+Math.round(v).toLocaleString("de-DE"),W-96,yy+3);
   }
 
-  /* ---- series lines + last-value labels ---- */
+  /* ---- x axis: day ticks when zoomed in, month/year ticks otherwise ---- */
+  const MONTHS=["Jan","Feb","M\u00e4r","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+  const pxPerDay=(W-110)/Math.max(1,(t1-t0)/86400000);
+  if(pxPerDay>=14){
+    const step=pxPerDay>=40?1:pxPerDay>=16?2:pxPerDay>=7?5:10;
+    let ddt=new Date(t0);ddt=new Date(ddt.getFullYear(),ddt.getMonth(),ddt.getDate());
+    let lastLx=-1e9;                     // label collision guard (the
+    while(ddt.getTime()<=t1){            // day-1 restart at month bounds can
+      if(ddt.getTime()>=t0&&(ddt.getDate()-1)%step===0){   // sit 1 day apart)
+        const dx=x(ddt.getTime());
+        ctx.strokeStyle="#333";
+        ctx.beginPath();ctx.moveTo(dx,H-24);ctx.lineTo(dx,H-19);ctx.stroke();
+        if(dx-lastLx>=26){
+          ctx.fillStyle="#888";
+          ctx.fillText(("0"+ddt.getDate()).slice(-2)+"."+
+                       ("0"+(ddt.getMonth()+1)).slice(-2),dx-9,H-8);
+          lastLx=dx;
+        }
+      }
+      ddt=new Date(ddt.getFullYear(),ddt.getMonth(),ddt.getDate()+1);
+    }
+  }else{
+    const d0=new Date(t0);
+    let mdt=new Date(d0.getFullYear(),d0.getMonth()+1,1);
+    let lastYearLabel=null;
+    while(mdt.getTime()<=t1){
+      const mx=x(mdt.getTime());
+      ctx.strokeStyle="#333";
+      ctx.beginPath();ctx.moveTo(mx,H-24);ctx.lineTo(mx,H-19);ctx.stroke();
+      const pxPerMonth=(W-110)/Math.max(1,((t1-t0)/(30.44*86400000)));
+      if(pxPerMonth>34 || mdt.getMonth()%2===0){
+        ctx.fillStyle="#888";
+        ctx.fillText(MONTHS[mdt.getMonth()],mx-9,H-8);
+      }
+      if(mdt.getMonth()===0||lastYearLabel===null){
+        ctx.fillStyle="#aaa";ctx.font="bold 11px sans-serif";
+        ctx.fillText(String(mdt.getFullYear()),mx-14,H-8);
+        ctx.font="10px sans-serif";
+        lastYearLabel=mdt.getFullYear();
+      }
+      mdt=new Date(mdt.getFullYear(),mdt.getMonth()+1,1);
+    }
+  }
+
+  /* ---- series lines + labels at the last VISIBLE point ---- */
   series.forEach(s=>{
-    const pts=s.pts.filter(p=>!isNaN(Date.parse(p[0])));
-    if(pts.length<2) return;
+    if(s.pts.length<2) return;
     ctx.beginPath();
-    pts.forEach((p,i)=>{const px=x(Date.parse(p[0])),py=y(p[1]);
+    s.pts.forEach((p,i)=>{const px=x(Date.parse(p[0])),py=y(p[1]);
       i?ctx.lineTo(px,py):ctx.moveTo(px,py);});
     ctx.strokeStyle=s.color;ctx.lineWidth=1.8;ctx.stroke();
-    const last=pts[pts.length-1];
+    const vis=s.pts.filter(p=>Date.parse(p[0])<=t1);
+    const last=vis.length?vis[vis.length-1]:s.pts[0];
     ctx.beginPath();ctx.arc(x(Date.parse(last[0])),y(last[1]),2.5,0,7);
     ctx.fillStyle=s.color;ctx.fill();
     ctx.fillStyle=s.color;ctx.font="10px sans-serif";
-    ctx.fillText(`${BOOK_SHORT[s.name]||s.name} €${Math.round(last[1]).toLocaleString("de-DE")}`,
+    ctx.fillText(`${BOOK_SHORT[s.name]||s.name} \u20ac${Math.round(last[1]).toLocaleString("de-DE")}`,
                  Math.min(x(Date.parse(last[0]))+6,W-86),y(last[1])+3);
   });
+
+  /* ---- zoom indicator ---- */
+  if(V.t0>T0+(T1-T0)*0.005||V.t1<T1-(T1-T0)*0.005||!V.yAuto){
+    ctx.fillStyle="#888";ctx.font="10px sans-serif";
+    ctx.fillText("zoomed \u2014 double-click resets",10,12);
+  }
+
+  /* ---- crosshair readout (position set by the pan/zoom wiring below) ---- */
+  const hv=_eqHover;
+  if(hv&&hv.px>=0&&hv.px<=W-102&&hv.py>=16&&hv.py<=H-24){
+    const tc=xInv(hv.px);
+    ctx.strokeStyle="#666";ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(hv.px,16);ctx.lineTo(hv.px,H-24);ctx.stroke();
+    ctx.setLineDash([]);
+    const lines=[new Date(tc).toLocaleDateString("de-DE",
+      {day:"2-digit",month:"2-digit",year:"numeric"})];
+    const dots=[];
+    ctx.font="11px sans-serif";
+    series.forEach(s=>{
+      if(!s.pts.length) return;
+      let best=s.pts[0],bd=Infinity;
+      s.pts.forEach(p=>{const d=Math.abs(Date.parse(p[0])-tc);
+        if(d<bd){bd=d;best=p;}});
+      dots.push({s:s,p:best});
+      lines.push(`${BOOK_SHORT[s.name]||s.name} \u20ac`+
+                 Math.round(best[1]).toLocaleString("de-DE"));
+    });
+    dots.forEach(d=>{
+      ctx.beginPath();ctx.arc(x(Date.parse(d.p[0])),y(d.p[1]),3.5,0,7);
+      ctx.strokeStyle=d.s.color;ctx.lineWidth=1.5;ctx.stroke();
+    });
+    const bw=Math.max(...lines.map(l=>ctx.measureText(l).width))+12;
+    const bh=lines.length*15+8;
+    let bx=hv.px+10; if(bx+bw>W-6) bx=hv.px-10-bw;
+    const by=Math.min(Math.max(16,hv.py-bh/2),H-24-bh);
+    ctx.fillStyle="rgba(27,27,27,0.92)";ctx.strokeStyle="#444";ctx.lineWidth=1;
+    ctx.beginPath();
+    if(ctx.roundRect) ctx.roundRect(bx,by,bw,bh,5); else ctx.rect(bx,by,bw,bh);
+    ctx.fill();ctx.stroke();
+    lines.forEach((l,i)=>{
+      ctx.fillStyle=i?(dots[i-1]?dots[i-1].s.color:"#ddd"):"#aaa";
+      ctx.fillText(l,bx+6,by+16+i*15);
+    });
+  }
 }
+
+/* ---- pan & zoom wiring: mouse wheel, drag, pinch, double-click ---- */
+(function(){
+  const cv=document.getElementById("daxchart");
+  if(!cv) return;
+  const PL=8,PR=110,PT=16,PB=24;         // plot-area inset (matches x()/y())
+  const ZOOM=1.2;                        // 20% per wheel step
+  const MINSPAN=2*86400000;              // never tighter than ~2 days
+  const pointers=new Map();              // active touch pointers
+  let drag=null,pinch=null;
+  cv.style.cursor="crosshair";
+  cv.style.touchAction="none";           // gestures belong to the chart, not
+                                         // the page scroll (needed for pinch)
+  const pos=e=>{                         // CSS px -> canvas px (the canvas is
+    const r=cv.getBoundingClientRect();  // displayed at width:100%)
+    return {px:(e.clientX-r.left)*(cv.width/r.width),
+            py:(e.clientY-r.top)*(cv.height/r.height)};
+  };
+  const redraw=()=>{ if(_eqLast) drawEquity(_eqLast); };
+  const queue=()=>{ if(!_eqRaf) _eqRaf=requestAnimationFrame(()=>{
+    _eqRaf=0;redraw();}); };
+
+  function clampView(){
+    const V=_eqView,E=_eqExt,full=E.T1-E.T0;
+    const span=Math.min(Math.max(V.t1-V.t0,MINSPAN),full*1.5);
+    const lt=E.T0-full*0.25,rt=E.T1+full*0.25;
+    let t1=Math.min(Math.max(V.t1,lt+span),rt);
+    let t0=t1-span;
+    if(t0<lt){t0=lt;t1=t0+span;}
+    V.t0=t0;V.t1=t1;
+    const F=(E.hi-E.lo)||1;
+    const vs=Math.min(Math.max(V.rhi-V.rlo,F*0.02),F*12);
+    let rlo=Math.min(Math.max(V.rlo,E.lo-F),E.hi+F-vs);
+    V.rlo=rlo;V.rhi=rlo+vs;
+  }
+  function afterMove(){
+    const V=_eqView,E=_eqExt;
+    clampView();
+    V.follow=(V.t1>=E.T1-0.02*(E.T1-E.T0));
+    redraw();
+  }
+  cv.addEventListener("wheel",e=>{
+    if(!_eqLast||_eqView.t0==null) return;
+    e.preventDefault();
+    const p=pos(e);
+    const k=Math.pow(ZOOM,e.deltaY>0?1:-1);   // wheel up = zoom in
+    const both=e.ctrlKey||e.metaKey;
+    zoomAt(p.px,p.py,(both||!e.shiftKey)?k:1,(both||e.shiftKey)?k:1);
+  },{passive:false});
+  function zoomAt(px,py,kx,ky){
+    const V=_eqView;
+    if(kx!==1){                         // zoom X around the cursor
+      const tc=V.t0+((px-PL)/(cv.width-PR))*(V.t1-V.t0);
+      V.t0=tc-(tc-V.t0)*kx;V.t1=tc+(V.t1-tc)*kx;
+    }
+    if(ky!==1){                         // zoom Y around the cursor
+      const vc=V.rlo+((cv.height-PB-py)/(cv.height-PT-PB))*(V.rhi-V.rlo);
+      V.rlo=vc-(vc-V.rlo)*ky;V.rhi=vc+(V.rhi-vc)*ky;
+      V.yAuto=false;
+    }
+    afterMove();
+  }
+  cv.addEventListener("pointerdown",e=>{
+    if(!_eqLast) return;
+    try{cv.setPointerCapture(e.pointerId);}catch(_){} // synthetic events
+    pointers.set(e.pointerId,pos(e));
+    if(pointers.size===2){              // pinch: remember the base window
+      const [a,b]=[...pointers.values()];
+      pinch={d0:Math.hypot(a.px-b.px,a.py-b.py)||1,
+             t0:_eqView.t0,t1:_eqView.t1,rlo:_eqView.rlo,rhi:_eqView.rhi};
+      drag=null;
+    }else if(e.button===0){
+      const p=pos(e);
+      drag={px:p.px,py:p.py,t0:_eqView.t0,t1:_eqView.t1,
+            rlo:_eqView.rlo,rhi:_eqView.rhi};
+      cv.style.cursor="grabbing";
+    }
+  });
+  cv.addEventListener("pointermove",e=>{
+    if(pointers.has(e.pointerId)) pointers.set(e.pointerId,pos(e));
+    if(pinch&&pointers.size>=2){        // pinch = zoom both axes, centered
+      const [a,b]=[...pointers.values()];   // on the fingers' midpoint
+      const d=Math.hypot(a.px-b.px,a.py-b.py)||1;
+      const P=pinch,V=_eqView;
+      const k=Math.min(10,Math.max(0.1,P.d0/d));
+      const mx=(a.px+b.px)/2,my=(a.py+b.py)/2;
+      const tc=P.t0+((mx-PL)/(cv.width-PR))*(P.t1-P.t0);
+      const vc=P.rlo+((cv.height-PB-my)/(cv.height-PT-PB))*(P.rhi-P.rlo);
+      V.t0=tc-(tc-P.t0)*k;V.t1=tc+(P.t1-tc)*k;
+      V.rlo=vc-(vc-P.rlo)*k;V.rhi=vc+(P.rhi-vc)*k;
+      V.yAuto=false;
+      afterMove();return;
+    }
+    if(drag){                           // pan: the curve follows the cursor
+      const p=pos(e),V=_eqView;
+      const dt=(p.px-drag.px)/(cv.width-PR)*(drag.t1-drag.t0);
+      V.t0=drag.t0-dt;V.t1=drag.t1-dt;
+      const dv=(drag.py-p.py)/(cv.height-PT-PB)*(drag.rhi-drag.rlo);
+      V.rlo=drag.rlo-dv;V.rhi=drag.rhi-dv;
+      V.yAuto=false;
+      afterMove();return;
+    }
+    _eqHover=pos(e);queue();            // idle: crosshair readout
+  });
+  const end=e=>{
+    pointers.delete(e.pointerId);
+    if(pointers.size<2) pinch=null;
+    if(pointers.size===0&&drag){drag=null;cv.style.cursor="crosshair";}
+  };
+  cv.addEventListener("pointerup",end);
+  cv.addEventListener("pointercancel",end);
+  cv.addEventListener("pointerleave",()=>{
+    if(!drag&&!pinch){_eqHover=null;redraw();}});
+  cv.addEventListener("dblclick",()=>{    // reset to the full history
+    _eqView.t0=null;_eqView.t1=null;_eqView.yAuto=true;_eqView.follow=true;
+    _eqHover=null;redraw();
+  });
+})();
 
 async function tick(){
  try{
