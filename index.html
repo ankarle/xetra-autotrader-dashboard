@@ -40,7 +40,6 @@ h3{margin:2px 0;font-weight:600}
 <h1>XETRA AUTOTRADER <span class="version">v1.0</span></h1>
 <div class="tagline">Auto-Trader XETRA · public view · Not investment advice, no liability assumed. Past performance is not indicative of future results. Trading involves risk of loss.</div>
 <div class="tagline">All trades are <b>virtual trades</b> — no real orders are placed. They are executed on real intraday XETRA market data, 15 minutes delayed, and include realistic commissions, slippage and interest — so results are equivalent to what real trades would have achieved.</div>
-<div> Recommended split: 40% Momentum Trader / 60% Bear Protector Pyr.</div>
 
 <div class="tile"><span id="heart">…</span>
   <div id="hsub" class="small"></div></div>
@@ -125,12 +124,13 @@ function phaseColor(p){return /MARKUP|SETTLE_UP|PEAK/.test(p||"")?"#7d5":
   /MARKDOWN|SETTLE_DOWN|CRASH/.test(p||"")?"#f66":"#fc5";}
 function perfClass(p){return p==null?"":p>=0?"ok":"bad";}
 const dname=(b,n)=>(b&&b.display_name)||n;
-const BOOK_SHORT={"MOM3":"MOM","BPM_Floor_Pyr":"BPP"};
+const BOOK_SHORT={"MOM3":"MOM","BPM_Floor_Pyr":"BPP","ADA3":"ADA","BPM_Wide_Ladder":"BWL","PORT_A2WL":"A2WL"};
 const pdate=(iso)=>!iso?"–":new Date(iso).toLocaleString("de-DE",
   {timeZone:"Europe/Berlin",year:"2-digit",month:"2-digit",day:"2-digit",
    hour:"2-digit",minute:"2-digit"});
 
-const WHEEL_ORDER=["PEAK","PULLBACK","MARKDOWN","SETTLE_DOWN","BOTTOMING","REBOUND","MARKUP","SETTLE_UP"];
+const WHEEL_ORDER=["PEAK","PULLBACK","MARKDOWN","SETTLE_DOWN",
+                   "BOTTOMING","REBOUND","MARKUP","SETTLE_UP"];
 function buildWheel(){
   const w=document.getElementById("wheel");
   const cx=180, cy=160, R=126;
