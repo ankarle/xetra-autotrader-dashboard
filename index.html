@@ -81,6 +81,8 @@ h3{margin:2px 0;font-weight:600}
       <b style="color:#9fd">rsi</b> — Relative Strength Index (14d), 0–100; >70 overbought, <30 oversold<br>
       <b style="color:#9fd">63d% / rank63</b> — 63-trading-day return and its rank among the universe<br>
       <b style="color:#9fd">entry / cur / stop</b> — purchase price, current price, stop-loss trigger (€)<br>
+      <b style="color:#9fd">score (portfolio)</b> — the held stock's composite technical score right now (0–100)<br>
+      <b style="color:#9fd">day</b> — the position's gain/loss since the previous day's close (%, green = up / red = down; lots bought today measure from their entry)<br>
       <b style="color:#9fd">stop dist</b> — distance from current price down to the stop-loss (%)<br>
       <b style="color:#9fd">weight</b> — the lot's share of the book's total value (%)<br>
       <b style="color:#9fd">pnl</b> — realized profit/loss of the trade (€, net of commission)<br>
@@ -98,6 +100,7 @@ h3{margin:2px 0;font-weight:600}
 <h2>Portfolio value since inception <span class="small">· books + DAX (indexed to €10k)</span></h2>
 <div class="tile">
   <canvas id="daxchart" width="1920" height="512" style="width:100%;max-width:1920px;height:auto;display:block"></canvas>
+  <div class="xs" id="eqlegend" style="margin-top:2px"></div>
   <div class="xs" style="margin-top:2px">background: <span style="color:#7d5">▮ bull phases</span> · <span style="color:#fc5">▮ transitions</span> · <span style="color:#f66">▮ bear / crash</span> · dots: <span style="color:#7d5">● buy</span> / <span style="color:#f66">● sell</span> (circle colour = book) &middot; <b>zoom:</b> wheel = time &middot; Shift+wheel = &euro; &middot; Ctrl+wheel = both &middot; drag = pan &middot; double-click = reset</div>
 </div>
 
@@ -122,10 +125,7 @@ function phaseColor(p){return /MARKUP|SETTLE_UP|PEAK/.test(p||"")?"#7d5":
   /MARKDOWN|SETTLE_DOWN|CRASH/.test(p||"")?"#f66":"#fc5";}
 function perfClass(p){return p==null?"":p>=0?"ok":"bad";}
 const dname=(b,n)=>(b&&b.display_name)||n;
-const BOOK_SHORT={"MOM3":"MOM","BPM_Floor_Pyr":"BPP","ADA3":"ADA","BPM_Wide_Ladder":"BWL","PORT_A2WL":"A2WL"};
-
-// was:  const cols=["#9fd","#fda"];
-const cols=["#9fd","#fda","#7d5","#fc5","#9cf"];
+const BOOK_SHORT={"MOM3":"MOM","BPM_Floor_Pyr":"BPP"};
 const pdate=(iso)=>!iso?"–":new Date(iso).toLocaleString("de-DE",
   {timeZone:"Europe/Berlin",year:"2-digit",month:"2-digit",day:"2-digit",
    hour:"2-digit",minute:"2-digit"});
@@ -215,8 +215,31 @@ function drawEquity(eq){
   for(const [name,pts] of Object.entries(eq.series||{}))
     series.push({name:name,pts:pts.slice(),color:null});
   series.push({name:"DAX (indexed)",pts:dax.map(p=>[p[0],p[1]]),color:"#889"});
-  const cols=["#9fd","#fda"];
-  series.forEach((s,i)=>{if(s.color===null)s.color=cols[i%cols.length];});
+  /* one DISTINCT colour per curve: the two original books keep their
+     historical hue (MOM3 cyan, BPP amber) so long-time readers are not
+     re-trained; the newly promoted books + blend portfolios get their
+     own hue; DAX stays the grey benchmark. Unknown/future books fall
+     back to a 10-colour wheel so no two curves ever share a colour. */
+  const SERIES_COLORS={
+    "MOM3":"#9fd",               // cyan    (unchanged)
+    "BPM_Floor_Pyr":"#fda",      // amber   (unchanged)
+    "BPM_Wide_Ladder":"#ba68c8", // violet
+    "ADA2":"#81c784",            // green
+    "PORT_M3WL":"#f06292",       // pink
+    "PORT_A2WL":"#ffd54f",       // yellow
+    "PORT_TRI":"#7986cb"         // indigo
+  };
+  const FALLBACK_COLS=["#64b5f6","#ff8a65","#9575cd","#aed581","#fff176",
+    "#4db6ac","#e57373","#90a4ae","#a1887f","#80cbc4"];
+  let _fb=0;
+  series.forEach(s=>{if(s.color===null)
+    s.color=SERIES_COLORS[s.name]||FALLBACK_COLS[_fb++%FALLBACK_COLS.length];});
+  /* colour legend under the chart (the right-edge labels only mark the
+     last visible point; the legend identifies every curve at any zoom) */
+  const lg=document.getElementById("eqlegend");
+  if(lg) lg.innerHTML=series.map(s=>
+    `<span style="color:${s.color}">&#9679;</span>${esc(BOOK_SHORT[s.name]||s.name)}`)
+    .join("&ensp;");
   // keep only points with a parseable timestamp (every consumer below
   // needs Date.parse — filter once instead of three times)
   series.forEach(s=>{s.pts=s.pts.filter(p=>!isNaN(Date.parse(p[0])));});
@@ -339,7 +362,12 @@ function drawEquity(eq){
     }
   }
 
-  /* ---- series lines + labels at the last VISIBLE point ---- */
+  /* ---- series lines + labels at the last VISIBLE point ----
+     labels are collected first, then staggered vertically: converging
+     curves (two books finishing a few hundred EUR apart) can no longer
+     overwrite each other's labels; a dark halo keeps them readable
+     where they cross other lines */
+  const _labels=[];
   series.forEach(s=>{
     if(s.pts.length<2) return;
     ctx.beginPath();
@@ -350,10 +378,23 @@ function drawEquity(eq){
     const last=vis.length?vis[vis.length-1]:s.pts[0];
     ctx.beginPath();ctx.arc(x(Date.parse(last[0])),y(last[1]),2.5,0,7);
     ctx.fillStyle=s.color;ctx.fill();
-    ctx.fillStyle=s.color;ctx.font="10px sans-serif";
-    ctx.fillText(`${BOOK_SHORT[s.name]||s.name} \u20ac${Math.round(last[1]).toLocaleString("de-DE")}`,
-                 Math.min(x(Date.parse(last[0]))+6,W-86),y(last[1])+3);
+    _labels.push({name:BOOK_SHORT[s.name]||s.name,
+                  val:Math.round(last[1]),color:s.color,
+                  lx:Math.min(x(Date.parse(last[0]))+6,W-86),
+                  ly:y(last[1])+3});
   });
+  _labels.sort((a,b)=>a.ly-b.ly);
+  for(let i=1;i<_labels.length;i++)        /* anti-collision: >=12 px apart */
+    if(_labels[i].ly-_labels[i-1].ly<12) _labels[i].ly=_labels[i-1].ly+12;
+  for(let i=_labels.length-2;i>=0;i--)     /* and never off the plot area */
+    if(_labels[i+1].ly-_labels[i].ly<12) _labels[i].ly=_labels[i+1].ly-12;
+  ctx.font="10px sans-serif";ctx.lineJoin="round";ctx.miterLimit=1;
+  for(const L of _labels){
+    L.ly=Math.max(16,Math.min(H-8,L.ly));
+    const txt=`${L.name} \u20ac${L.val.toLocaleString("de-DE")}`;
+    ctx.strokeStyle="rgba(17,17,17,0.85)";ctx.lineWidth=3;ctx.strokeText(txt,L.lx,L.ly);
+    ctx.fillStyle=L.color;ctx.fillText(txt,L.lx,L.ly);
+  }
 
   /* ---- zoom indicator ---- */
   if(V.t0>T0+(T1-T0)*0.005||V.t1<T1-(T1-T0)*0.005||!V.yAuto){
@@ -588,6 +629,9 @@ async function tick(){
       `<td class="name small">${l.sector||""}</td><td>#${l.lot}</td>`+
       `<td class="xs">${pdate(l.purchase)}</td>`+
       `<td>${l.shares}</td><td>€${fmt(l.entry)}</td><td>€${fmt(l.current)}</td>`+
+      `<td>${l.score==null?"–":(+l.score).toFixed(1)}</td>`+
+      `<td class="${(l.day_pct||0)>=0?"ok":"bad"}">${l.day_pct==null?"–":
+        ((l.day_pct>=0?"+":"−")+Math.abs(l.day_pct).toFixed(2)+"%")}</td>`+
       `<td>€${fmt(l.stop)}</td><td>${fmt(l.stop_dist_pct)}%</td>`+
       `<td>${fmt(l.weight_pct)}%</td></tr>`).join("");
     const tr=(b.recent_trades||[]).map(t=>`<tr>`+
@@ -608,8 +652,8 @@ async function tick(){
       `<span class="${perfClass(daxp)}">${fmt(daxp)}%</span></div>`+
       `<table><tr><th>ticker</th><th class="name">company</th>`+
       `<th class="name">sector</th><th>lot</th><th>since</th><th>shares</th>`+
-      `<th>entry</th><th>cur</th><th>stop</th><th>stop dist</th>`+
-      `<th>weight</th></tr>${lots}</table>`+
+      `<th>entry</th><th>cur</th><th>score</th><th>day</th>`+
+      `<th>stop</th><th>stop dist</th><th>weight</th></tr>${lots}</table>`+
       (tr?`<div class="small" style="margin-top:6px">recent trades:</div>`+
         `<table><tr><th>timestamp (CET)</th><th>trade</th><th>ticker</th><th class="name">company</th>`+
         `<th class="name">sector</th><th>score</th><th>sh</th><th>price</th><th>pnl</th></tr>${tr}</table>`:"")+
