@@ -122,7 +122,10 @@ function phaseColor(p){return /MARKUP|SETTLE_UP|PEAK/.test(p||"")?"#7d5":
   /MARKDOWN|SETTLE_DOWN|CRASH/.test(p||"")?"#f66":"#fc5";}
 function perfClass(p){return p==null?"":p>=0?"ok":"bad";}
 const dname=(b,n)=>(b&&b.display_name)||n;
-const BOOK_SHORT={"MOM3":"MOM","BPM_Floor_Pyr":"BPP"};
+const BOOK_SHORT={"MOM3":"MOM","BPM_Floor_Pyr":"BPP","ADA3":"ADA","BPM_Wide_Ladder":"BWL","PORT_A2WL":"A2WL"};
+
+// was:  const cols=["#9fd","#fda"];
+const cols=["#9fd","#fda","#7d5","#fc5","#9cf"];
 const pdate=(iso)=>!iso?"–":new Date(iso).toLocaleString("de-DE",
   {timeZone:"Europe/Berlin",year:"2-digit",month:"2-digit",day:"2-digit",
    hour:"2-digit",minute:"2-digit"});
